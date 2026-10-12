@@ -4,6 +4,8 @@ import SwiftData
 public protocol DataService: Actor {
     func fetch<T: DataFetchRequest>(_ request: T) throws -> [T.DTOType]
     func insert<T: DataInsertRequest>(_ request: T) throws
+    func delete<T: DataDeleteRequest>(_ request: T) throws
+    func delete<T: DataDeleteRowRequest>(_ request: T) throws
 }
 
 public protocol DataFetchRequest: Sendable {
@@ -29,8 +31,17 @@ extension DataInsertRequest {
     var batchSize: Int { 20 }
 }
 
+public protocol DataDeleteRequest: Sendable {
+    associatedtype ModelType: PersistentModel
+    var predicate: Predicate<ModelType>? { get }
+}
+
+public protocol DataDeleteRowRequest: Sendable {
+    var id: PersistentIdentifier { get }
+}
+
 public actor SwiftDataService: DataService {
-    public nonisolated let modelContainer: ModelContainer
+    private let modelContainer: ModelContainer
     private let modelContext: ModelContext
 
     public init(modelContainer: ModelContainer) {
@@ -39,7 +50,6 @@ public actor SwiftDataService: DataService {
     }
 
     public func fetch<T: DataFetchRequest>(_ request: T) throws -> [T.DTOType] {
-        assert(!Thread.isMainThread)
         var descriptor = FetchDescriptor<T.ModelType>(
             predicate: request.predicate,
             sortBy: request.sortDescriptors
@@ -51,8 +61,6 @@ public actor SwiftDataService: DataService {
     }
 
     public func insert<T: DataInsertRequest>(_ request: T) throws {
-        assert(!Thread.isMainThread)
-        
         var cursor = 0
         while (cursor < request.rows.count) {
             let upper = min(request.rows.count, cursor + request.batchSize) - 1
@@ -62,6 +70,26 @@ public actor SwiftDataService: DataService {
             cursor += request.batchSize
         }
         
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+    
+    public func delete<T: DataDeleteRequest>(_ request: T) throws {
+        do {
+            try modelContext.delete(model: T.ModelType.self, where: request.predicate)
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+    
+    public func delete<T: DataDeleteRowRequest>(_ request: T) throws {
+        modelContext.delete(modelContext.model(for: request.id))
         do {
             try modelContext.save()
         } catch {
