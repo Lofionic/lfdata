@@ -2,11 +2,11 @@
 
 A small Swift package for doing SwiftData work off the main thread through typed, `Sendable` requests.
 
-`SwiftDataService` is an actor that owns its own `ModelContext`. You describe what to fetch or insert with request types; the service runs them serially on its own executor and hands back plain `Sendable` values (DTOs) instead of `@Model` objects, so results can cross actor boundaries safely.
+`SwiftDataService` is an actor that owns its own `ModelContext`. You describe what to fetch, insert or delete with request types; the service runs them serially on its own executor and hands back plain `Sendable` values (DTOs) instead of `@Model` objects, so results can cross actor boundaries safely.
 
 - **Never blocks the main thread** — requests run on the actor even when awaited from `@MainActor` code.
 - **Serialized** — one request runs at a time against a single context.
-- **Rolls back on failure** — if a save throws, pending inserts are discarded.
+- **Rolls back on failure** — if a save throws, pending inserts and deletes are discarded.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ Add the package in Xcode via **File › Add Package Dependencies…**, or in `Pa
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/<owner>/LFData.git", branch: "main"),
+    .package(url: "https://github.com/Lofionic/lfdata.git", from: "1.0.1"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: ["LFData"]),
@@ -75,6 +75,22 @@ struct InsertPeopleRequest: DataInsertRequest {
 }
 ```
 
+A delete request supplies a predicate; every matching row is deleted. A `nil` predicate deletes every row of that model type:
+
+```swift
+struct DeletePeopleRequest: DataDeleteRequest {
+    var predicate: Predicate<Person>?
+}
+```
+
+To delete a single row, pass its `PersistentIdentifier`. The service resolves it in its own context, so the identifier can come from a model fetched on any context (for example, the main context behind `@Query`):
+
+```swift
+struct DeletePersonRequest: DataDeleteRowRequest {
+    let id: PersistentIdentifier
+}
+```
+
 ### 3. Create a shared service and run requests
 
 ```swift
@@ -87,6 +103,10 @@ try await dataService.insert(InsertPeopleRequest(rows: [
 ]))
 
 let people = try await dataService.fetch(PeopleRequest(limit: 10))
+
+try await dataService.delete(DeletePeopleRequest(predicate: #Predicate { $0.name == "Ada" }))
+// `person` is a Person from any context, e.g. a row from @Query
+try await dataService.delete(DeletePersonRequest(id: person.persistentModelID))
 ```
 
 It is safe to share one `SwiftDataService` across the app and call it from views, view models or background tasks.
