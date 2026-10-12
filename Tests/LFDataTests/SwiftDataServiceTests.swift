@@ -19,6 +19,10 @@ final class SwiftDataServiceTests: XCTestCase {
                 self.batchSize = batchSize
             }
             
+            static func predicate(for dto: String) -> Predicate<TestDataType> {
+                #Predicate { $0.name == dto }
+            }
+            
             static func map(_ dto: String) -> TestDataType {
                 TestDataType(name: dto)
             }
@@ -191,5 +195,49 @@ final class SwiftDataServiceTests: XCTestCase {
         let rows = try await dataService.fetch(fetchRequest)
         
         XCTAssertEqual(rows, ["Alice"])
+    }
+    
+    func testInsertThrowsWhenRowAlreadyExists() async throws {
+        let schema = Schema([TestDataType.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        
+        let modelContainer = try ModelContainer(for: schema, configurations: config)
+        let dataService = SwiftDataService(modelContainer: modelContainer)
+        
+        try await dataService.insert(TestDataType.InsertRequest(rows: ["Alice"]))
+        
+        do {
+            try await dataService.insert(TestDataType.InsertRequest(rows: ["Bob", "Alice"]))
+            XCTFail("Expected duplicateRow")
+        } catch {
+            XCTAssertEqual(error as? DataServiceError, .duplicateRow)
+        }
+        
+        // The whole request is rolled back, including the non-duplicate row.
+        let rows = try await dataService.fetch(TestDataType.FetchRequest(sortDescriptors: [.init(\.name)]))
+        XCTAssertEqual(rows, ["Alice"])
+    }
+    
+    func testInsertThrowsOnDuplicateWithinRequest() async throws {
+        let schema = Schema([TestDataType.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        
+        let modelContainer = try ModelContainer(for: schema, configurations: config)
+        let dataService = SwiftDataService(modelContainer: modelContainer)
+        
+        do {
+            try await dataService.insert(TestDataType.InsertRequest(rows: ["Alice", "Bob", "Alice"], batchSize: 2))
+            XCTFail("Expected duplicateRow")
+        } catch {
+            XCTAssertEqual(error as? DataServiceError, .duplicateRow)
+        }
+        
+        let rows = try await dataService.fetch(TestDataType.FetchRequest())
+        XCTAssertEqual(rows, [])
+        
+        // The service is still usable after a failed insert.
+        try await dataService.insert(TestDataType.InsertRequest(rows: ["Carol"]))
+        let afterRows = try await dataService.fetch(TestDataType.FetchRequest())
+        XCTAssertEqual(afterRows, ["Carol"])
     }
 }

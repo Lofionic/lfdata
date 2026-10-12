@@ -48,6 +48,10 @@ final class SwiftDataServiceConcurrencyTests: XCTestCase {
         struct InsertRequest: DataInsertRequest {
             let rows: [String]
 
+            static func predicate(for dto: String) -> Predicate<ProbeModel> {
+                #Predicate { $0.name == dto }
+            }
+
             static func map(_ dto: String) -> ProbeModel {
                 SwiftDataServiceConcurrencyTests.probe.enter()
                 defer { SwiftDataServiceConcurrencyTests.probe.exit() }

@@ -19,7 +19,7 @@ Add the package in Xcode via **File › Add Package Dependencies…**, or in `Pa
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Lofionic/lfdata.git", from: "1.0.1"),
+    .package(url: "https://github.com/Lofionic/lfdata.git", from: "1.0.2"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: ["LFData"]),
@@ -62,12 +62,17 @@ struct PeopleRequest: DataFetchRequest {
 }
 ```
 
-An insert request supplies the rows to insert and a mapping from DTO to model:
+An insert request supplies the rows to insert, a predicate that identifies an existing row for each DTO, and a mapping from DTO to model. If any DTO matches a row already in the store, or an earlier row in the same request, the insert throws `DataServiceError.duplicateRow` and nothing is saved. Use an upsert to update rows that already exist.
 
 ```swift
 struct InsertPeopleRequest: DataInsertRequest {
     let rows: [PersonDTO]
     var batchSize: Int { 20 }
+
+    static func predicate(for dto: PersonDTO) -> Predicate<Person> {
+        let name = dto.name
+        return #Predicate { $0.name == name }
+    }
 
     static func map(_ dto: PersonDTO) -> Person {
         Person(name: dto.name)
@@ -91,6 +96,27 @@ struct DeletePersonRequest: DataDeleteRowRequest {
 }
 ```
 
+An upsert request updates the row matching each DTO, or inserts a new one when nothing matches. All rows are applied in a single save, so a failure leaves the store untouched:
+
+```swift
+struct UpsertPeopleRequest: DataUpsertRequest {
+    let rows: [PersonDTO]
+
+    static func predicate(for dto: PersonDTO) -> Predicate<Person> {
+        let name = dto.name
+        return #Predicate { $0.name == name }
+    }
+
+    static func map(_ dto: PersonDTO) -> Person {
+        Person(name: dto.name)
+    }
+
+    static func update(_ model: Person, with dto: PersonDTO) {
+        model.name = dto.name
+    }
+}
+```
+
 ### 3. Create a shared service and run requests
 
 ```swift
@@ -103,6 +129,8 @@ try await dataService.insert(InsertPeopleRequest(rows: [
 ]))
 
 let people = try await dataService.fetch(PeopleRequest(limit: 10))
+
+try await dataService.upsert(UpsertPeopleRequest(rows: [PersonDTO(name: "Ada")]))
 
 try await dataService.delete(DeletePeopleRequest(predicate: #Predicate { $0.name == "Ada" }))
 // `person` is a Person from any context, e.g. a row from @Query
