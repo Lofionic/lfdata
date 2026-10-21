@@ -19,7 +19,7 @@ Add the package in Xcode via **File › Add Package Dependencies…**, or in `Pa
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Lofionic/lfdata.git", from: "1.0.2"),
+    .package(url: "https://github.com/Lofionic/lfdata.git", from: "1.1.0"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: ["LFData"]),
@@ -139,6 +139,19 @@ try await dataService.delete(DeletePersonRequest(id: person.persistentModelID))
 
 It is safe to share one `SwiftDataService` across the app and call it from views, view models or background tasks.
 
+### Choosing the queue
+
+Each service runs its requests serially on a `DispatchSerialQueue`, which is also where it creates and uses its `ModelContext`. By default that is a private queue of its own, so work never runs on the main thread. Pass a queue to name it, or to have several services share one:
+
+```swift
+let dataService = SwiftDataService(
+    modelContainer: container,
+    queue: DispatchSerialQueue(label: "com.example.app.people")
+)
+```
+
+The service can be created anywhere, including during app launch on the main thread: its `ModelContext` is created on first use, on the service's queue.
+
 ### Abstracting the service
 
 Depend on the `DataService` protocol rather than the concrete actor to swap in a mock for tests or previews:
@@ -152,7 +165,7 @@ final class PeopleViewModel {
 
 ## Notes
 
-- `SwiftDataService` is a plain actor rather than a `@ModelActor`. On current SDKs, `@ModelActor`'s executor runs work on the main thread when awaited from `@MainActor` code; a default actor executor does not. `SwiftDataServiceConcurrencyTests` guards this.
+- `SwiftDataService` is a plain actor with a custom executor rather than a `@ModelActor`. On current SDKs, `@ModelActor`'s executor runs work on the main thread when awaited from `@MainActor` code, and a `ModelContext` created on one thread and used on another triggers SwiftData's "Unbinding from the main queue" warning. Running on a serial queue and creating the context lazily on it avoids both. `SwiftDataServiceConcurrencyTests` and `SwiftDataServiceQueueTests` guard this.
 - Changes saved by the service are written to the shared `ModelContainer`. `@Query` views on the main context may not reflect them until SwiftData merges the changes.
 
 ## Running the tests

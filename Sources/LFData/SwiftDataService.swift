@@ -62,11 +62,23 @@ public protocol DataUpsertRequest: Sendable {
 
 public actor SwiftDataService: DataService {
     private let modelContainer: ModelContainer
-    private let modelContext: ModelContext
+    private let queue: DispatchSerialQueue
+    private lazy var modelContext = ModelContext(modelContainer)
 
-    public init(modelContainer: ModelContainer) {
+    /// The service runs every request on `queue`, which is also where its `ModelContext` is created and used.
+    public nonisolated var unownedExecutor: UnownedSerialExecutor {
+        queue.asUnownedSerialExecutor()
+    }
+
+    /// - Parameters:
+    ///   - modelContainer: The container the service reads from and writes to.
+    ///   - queue: The serial queue the service runs on. Defaults to a new private queue for this service.
+    public init(
+        modelContainer: ModelContainer,
+        queue: DispatchSerialQueue = DispatchSerialQueue(label: "LFData.SwiftDataService")
+    ) {
         self.modelContainer = modelContainer
-        self.modelContext = ModelContext(modelContainer)
+        self.queue = queue
     }
 
     public func fetch<T: DataFetchRequest>(_ request: T) throws -> [T.DTOType] {
