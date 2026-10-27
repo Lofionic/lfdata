@@ -5,8 +5,6 @@ import SwiftData
 import XCTest
 @testable import LFData
 
-/// Records, from inside the actor's work, whether it ran on the main thread and how many
-/// requests were executing at the same time.
 final class ExecutionProbe: Sendable {
     struct State {
         var inFlight = 0
@@ -55,7 +53,6 @@ final class SwiftDataServiceConcurrencyTests: XCTestCase {
             static func map(_ dto: String) -> ProbeModel {
                 SwiftDataServiceConcurrencyTests.probe.enter()
                 defer { SwiftDataServiceConcurrencyTests.probe.exit() }
-                // Widen the window so overlapping executions would be observed.
                 usleep(200)
                 return ProbeModel(name: dto)
             }
@@ -75,8 +72,6 @@ final class SwiftDataServiceConcurrencyTests: XCTestCase {
         }
     }
 
-    /// Driven from the main actor, as an app-wide shared instance typically is, then hammered
-    /// with concurrent inserts and fetches.
     @MainActor
     func testSharedServiceRunsOffMainAndSerializes() async throws {
         XCTAssertTrue(Thread.isMainThread)
@@ -90,7 +85,6 @@ final class SwiftDataServiceConcurrencyTests: XCTestCase {
         let writers = 20
         let rowsPerWriter = 25
 
-        // Main-thread heartbeat: if the actor's work ran on main, these ticks would stall.
         let heartbeat = Task { @MainActor in
             var longestGap: TimeInterval = 0
             var last = Date()
@@ -127,7 +121,6 @@ final class SwiftDataServiceConcurrencyTests: XCTestCase {
         XCTAssertGreaterThan(state.calls, writers * rowsPerWriter)
         XCTAssertEqual(state.mainThreadHits, 0, "Actor work executed on the main thread")
         XCTAssertEqual(state.maxInFlight, 1, "Requests overlapped; actor work was not serialized")
-        // 500 inserts × 200µs ≈ 100ms of actor work; main should never stall for anything close to that.
         XCTAssertLessThan(longestMainGap, 0.05, "Main thread stalled for \(longestMainGap)s")
 
         print("calls=\(state.calls) maxInFlight=\(state.maxInFlight) mainHits=\(state.mainThreadHits) longestMainGap=\(longestMainGap)")

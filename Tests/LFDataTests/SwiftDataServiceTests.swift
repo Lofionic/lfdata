@@ -183,7 +183,6 @@ final class SwiftDataServiceTests: XCTestCase {
         let insertRequest = TestDataType.InsertRequest(rows: ["Alice", "Bob"])
         try await dataService.insert(insertRequest)
         
-        // Callers obtain models from their own context (e.g. the main context), not the service's.
         let callerContext = ModelContext(modelContainer)
         let bob = try XCTUnwrap(
             callerContext.fetch(FetchDescriptor<TestDataType>(predicate: #Predicate { $0.name == "Bob" })).first
@@ -213,7 +212,6 @@ final class SwiftDataServiceTests: XCTestCase {
             XCTAssertEqual(error as? DataServiceError, .duplicateRow)
         }
         
-        // The whole request is rolled back, including the non-duplicate row.
         let rows = try await dataService.fetch(TestDataType.FetchRequest(sortDescriptors: [.init(\.name)]))
         XCTAssertEqual(rows, ["Alice"])
     }
@@ -235,7 +233,6 @@ final class SwiftDataServiceTests: XCTestCase {
         let rows = try await dataService.fetch(TestDataType.FetchRequest())
         XCTAssertEqual(rows, [])
         
-        // The service is still usable after a failed insert.
         try await dataService.insert(TestDataType.InsertRequest(rows: ["Carol"]))
         let afterRows = try await dataService.fetch(TestDataType.FetchRequest())
         XCTAssertEqual(afterRows, ["Carol"])

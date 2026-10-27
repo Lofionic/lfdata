@@ -10,7 +10,7 @@ A small Swift package for doing SwiftData work off the main thread through typed
 
 ## Requirements
 
-- iOS 17+ / macOS 14+
+- iOS 18+ / macOS 15+ / tvOS 18+ / watchOS 11+ / visionOS 2+
 - Swift 6.4 (Xcode 27)
 
 ## Installation
@@ -19,7 +19,7 @@ Add the package in Xcode via **File › Add Package Dependencies…**, or in `Pa
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Lofionic/lfdata.git", from: "1.1.0"),
+    .package(url: "https://github.com/Lofionic/lfdata.git", from: "2.0.0"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: ["LFData"]),
@@ -138,6 +138,33 @@ try await dataService.delete(DeletePersonRequest(id: person.persistentModelID))
 ```
 
 It is safe to share one `SwiftDataService` across the app and call it from views, view models or background tasks.
+
+### Observing changes
+
+`observe(_:)` turns a fetch request into a live query. It yields the current rows straight away, then fetches again whenever the request's model type may have changed, and yields only when the rows differ from the last ones it yielded. It needs the request's DTO to be `Equatable`.
+
+```swift
+for try await people in dataService.observe(PeopleRequest()) {
+    self.people = people
+}
+```
+
+Run the loop in a task that's cancelled when you stop caring, such as SwiftUI's `.task`; cancelling ends the observation. Changes that arrive while a fetch is in progress are combined, so a burst of writes leads to one more fetch, not one per write.
+
+To build your own live query across several model types, `changes(to:)` yields whenever any of them may have changed:
+
+```swift
+for await _ in dataService.changes(to: [Person.self, Pet.self]) {
+    await reload()
+}
+```
+
+A change is noticed when:
+
+- this service writes the model type: insert, upsert, delete or delete-row;
+- any other `ModelContext` on the same `ModelContainer` in this process saves inserts, updates or deletions of it.
+
+It isn't noticed when another context bulk-deletes with `ModelContext.delete(model:where:)`, which doesn't post `ModelContext.didSave`, or when another process such as a widget writes to the same store.
 
 ### Choosing the queue
 
