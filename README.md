@@ -117,6 +117,24 @@ struct UpsertPeopleRequest: DataUpsertRequest {
 }
 ```
 
+An update request changes the rows matching its predicate and never inserts. Use it to change a field on rows that already exist, such as a status:
+
+```swift
+struct RenamePeopleRequest: DataUpdateRequest {
+    let names: [String]
+    let newName: String
+
+    var predicate: Predicate<Person>? {
+        let names = names
+        return #Predicate { names.contains($0.name) }
+    }
+
+    func update(_ model: Person) {
+        model.name = newName
+    }
+}
+```
+
 ### 3. Create a shared service and run requests
 
 ```swift
@@ -131,6 +149,8 @@ try await dataService.insert(InsertPeopleRequest(rows: [
 let people = try await dataService.fetch(PeopleRequest(limit: 10))
 
 try await dataService.upsert(UpsertPeopleRequest(rows: [PersonDTO(name: "Ada")]))
+
+try await dataService.update(RenamePeopleRequest(names: ["Ada"], newName: "Ada Lovelace"))
 
 try await dataService.delete(DeletePeopleRequest(predicate: #Predicate { $0.name == "Ada" }))
 // `person` is a Person from any context, e.g. a row from @Query
@@ -161,7 +181,7 @@ for await _ in dataService.changes(to: [Person.self, Pet.self]) {
 
 A change is noticed when:
 
-- this service writes the model type: insert, upsert, delete or delete-row;
+- this service writes the model type: insert, upsert, update, delete or delete-row;
 - any other `ModelContext` on the same `ModelContainer` in this process saves inserts, updates or deletions of it.
 
 It isn't noticed when another context bulk-deletes with `ModelContext.delete(model:where:)`, which doesn't post `ModelContext.didSave`, or when another process such as a widget writes to the same store.

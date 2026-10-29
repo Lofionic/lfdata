@@ -11,6 +11,7 @@ public protocol DataService: Actor {
     func delete<T: DataDeleteRequest>(_ request: T) throws
     func delete<T: DataDeleteRowRequest>(_ request: T) throws
     func upsert<T: DataUpsertRequest>(_ request: T) throws
+    func update<T: DataUpdateRequest>(_ request: T) throws
 
     nonisolated func observe<T: DataFetchRequest>(_ request: T) -> AsyncThrowingStream<[T.DTOType], any Error>
         where T.DTOType: Equatable
@@ -48,6 +49,13 @@ public protocol DataDeleteRequest: Sendable {
 
 public protocol DataDeleteRowRequest: Sendable {
     var id: PersistentIdentifier { get }
+}
+
+public protocol DataUpdateRequest: Sendable {
+    associatedtype ModelType: PersistentModel
+
+    var predicate: Predicate<ModelType>? { get }
+    func update(_ model: ModelType)
 }
 
 public protocol DataUpsertRequest: Sendable {
@@ -192,6 +200,20 @@ public actor SwiftDataService: DataService {
                     modelContext.insert(T.map(dto))
                 }
             }
+            try modelContext.save()
+            didChange(T.ModelType.self)
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+
+    public func update<T: DataUpdateRequest>(_ request: T) throws {
+        do {
+            let models = try modelContext.fetch(FetchDescriptor<T.ModelType>(predicate: request.predicate))
+            guard !models.isEmpty else { return }
+
+            models.forEach(request.update)
             try modelContext.save()
             didChange(T.ModelType.self)
         } catch {
