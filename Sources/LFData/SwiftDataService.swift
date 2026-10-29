@@ -24,7 +24,7 @@ public protocol DataFetchRequest: Sendable {
     var predicate: Predicate<ModelType>? { get }
     var sortDescriptors: [SortDescriptor<ModelType>] { get }
     var limit: Int? { get }
-    static func map(_ model: ModelType) -> DTOType
+    static func map(_ model: ModelType) throws -> DTOType
 }
 
 public protocol DataInsertRequest: Sendable {
@@ -92,7 +92,7 @@ public actor SwiftDataService: DataService {
         descriptor.fetchLimit = request.limit
 
         let rows = try modelContext.fetch(descriptor)
-        return rows.map(T.map)
+        return try rows.map(T.map)
     }
 
     public nonisolated func observe<T: DataFetchRequest>(_ request: T) -> AsyncThrowingStream<[T.DTOType], any Error>

@@ -46,7 +46,7 @@ struct PersonDTO: Sendable, Equatable {
 
 ### 2. Define requests
 
-A fetch request supplies a predicate, sort order and limit, plus a mapping from model to DTO:
+A fetch request supplies a predicate, sort order and limit, plus a mapping from model to DTO. The mapping can throw, for example when decoding stored data; the error is thrown from `fetch` and ends an `observe` stream:
 
 ```swift
 import LFData
